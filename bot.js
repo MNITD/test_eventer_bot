@@ -39,19 +39,19 @@ bot.onText(/\/echo (.+)/, function (msg, match) {
     bot.sendMessage(msg.chat.id, match[1]);
 });
 
-bot.onText(/\/set_profile/, function (msg, match) {
-    if (state === "initial") {
-        state = "profile_updating";
-        profile.currentItem = 0;
-        var property = Object.keys(profile.data)[profile.currentItem];
-        bot.sendMessage(msg.chat.id, "Your " + property + ":");
-    } else {
-        bot.sendMessage(msg.chat.id, "Profile has already filled!\n\nUse /update_profile to change profile.");
-    }
-});
+// bot.onText(/\/set_profile/, function (msg, match) {
+//     if (state === "initial") {
+//         state = "profile_filling";
+//         profile.currentItem = 0;
+//         var property = Object.keys(profile.data)[profile.currentItem];
+//         bot.sendMessage(msg.chat.id, "Your " + property + ":");
+//     } else {
+//         bot.sendMessage(msg.chat.id, "Profile has already filled!\n\nUse /update_profile to change profile.");
+//     }
+// });
 
 bot.on("text", function (msg) {
-    if (state === "profile_updating") {
+    if (state === "profile_filling") {
         var property = Object.keys(profile.data)[profile.currentItem];
         profile.data[property] = msg.text;
         profile.currentItem++;
@@ -59,12 +59,22 @@ bot.on("text", function (msg) {
         if (property !== undefined)
             bot.sendMessage(msg.chat.id, "Your " + property + ":");
         else
-            state = "profile_updated";
+            state = "profile_filled";
     }
 });
 
-bot.onText(/\/my_profile/, function (msg, match) {
-    bot.sendMessage(msg.chat.id, "Your profile:\n\n" + parseProfile(profile.data));
+bot.onText(/\/profile/, function (msg, match) {
+    if(state === "initial"){
+        var property;
+        state = "profile_filling";
+        profile.currentItem = 0;
+        property = Object.keys(profile.data)[profile.currentItem];
+        bot.sendMessage(msg.chat.id, "Your profile is empty. Answer the question to fill profile.")
+            .then(function () {
+                bot.sendMessage(msg.chat.id, "Your " + property + ":");
+            });
+    } else
+        bot.sendMessage(msg.chat.id, "Your profile:\n\n" + parseProfile(profile.data));
 });
 
 bot.onText(/\/update_profile/, function (msg, match) {
@@ -72,8 +82,14 @@ bot.onText(/\/update_profile/, function (msg, match) {
 });
 
 bot.onText(/\/contacts/, function (msg, match) {
-    bot.sendMessage(msg.chat.id, "You have " + profile.contacts.length + " contacts:\n\n");
-    profile.contacts.forEach(function (p1) {
-        bot.sendMessage(msg.chat.id, parseProfile(p1));
-    });
+    bot.sendMessage(msg.chat.id, "You have " + profile.contacts.length + " contacts:\n\n")
+        .then(function () {
+            profile.contacts.forEach(function (p1) {
+                bot.sendMessage(msg.chat.id, parseProfile(p1));
+            });
+        });
+});
+
+bot.onText(/\/share_profile/,function (msg, match) {
+    bot.sendMessage(msg.chat.id, "This command has not specified yet.");
 });
