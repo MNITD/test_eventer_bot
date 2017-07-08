@@ -52,7 +52,8 @@ bot.onText(/\/echo (.+)/, function (msg, match) {
 
 bot.on("text", function (msg) {
     if (state === "profile_filling") {
-        var property = Object.keys(profile.data)[profile.currentItem];
+        var property;
+        property = Object.keys(profile.data)[profile.currentItem];
         profile.data[property] = msg.text;
         profile.currentItem++;
         property = Object.keys(profile.data)[profile.currentItem];
@@ -60,17 +61,29 @@ bot.on("text", function (msg) {
             bot.sendMessage(msg.chat.id, "Your " + property + ":");
         else
             state = "profile_filled";
+    } else if(state === "profile_updating"){
+        var property;
+        property = Object.keys(profile.data)[profile.currentItem];
+        if (msg.text !== "Y")
+            profile.data[property] = msg.text;
+        profile.currentItem++;
+        property = Object.keys(profile.data)[profile.currentItem];
+        if (property !== undefined)
+            bot.sendMessage(msg.chat.id, "Your " + property + ": ("+ profile.data[property]+")");
+        else
+            state = "profile_updated";
     }
 });
 
 bot.onText(/\/profile/, function (msg, match) {
     if(state === "initial"){
-        var property;
         state = "profile_filling";
-        profile.currentItem = 0;
-        property = Object.keys(profile.data)[profile.currentItem];
         bot.sendMessage(msg.chat.id, "Your profile is empty. Answer the question to fill profile.")
             .then(function () {
+                var property;
+
+                profile.currentItem = 0;
+                property = Object.keys(profile.data)[profile.currentItem];
                 bot.sendMessage(msg.chat.id, "Your " + property + ":");
             });
     } else
@@ -78,7 +91,17 @@ bot.onText(/\/profile/, function (msg, match) {
 });
 
 bot.onText(/\/update_profile/, function (msg, match) {
-    bot.sendMessage(msg.chat.id, "This command has not specified yet.");
+    if(state !== "initial"){
+        state = "profile_updating";
+        bot.sendMessage(msg.chat.id, "Answer the question to update profile. To save previous value write \'Y\'.")
+            .then(function () {
+                var property;
+                profile.currentItem = 0;
+                property = Object.keys(profile.data)[profile.currentItem];
+                bot.sendMessage(msg.chat.id, "Your " + property + ": ("+ profile.data[property]+")");
+            });
+    } else
+        bot.sendMessage(msg.chat.id, "/profile");
 });
 
 bot.onText(/\/contacts/, function (msg, match) {
