@@ -11,9 +11,21 @@ bot.getMe().then(function (me) {
 
 var state = "initial";
 var profile = {
-    data: {name: "", surname:"", role: "", email:"", phone:""},
+    data: {name: "", surname: "", role: "", email: "", phone: ""},
+    contacts: [{name: "John", surname: "McMillow", role: "PM", email: "mcmillow@gmail.com", phone: "+20434384998"}],
     currentItem: 0
 };
+
+function parseProfile(profile) {
+    var message = "";
+    for (var k in profile) {
+        message += k;
+        message += ": ";
+        message += profile[k] === "" ? "-" : profile[k];
+        message += '\n';
+    }
+    return message;
+}
 
 //matches /start
 bot.onText(/\/start/, function (msg, match) {
@@ -28,34 +40,40 @@ bot.onText(/\/echo (.+)/, function (msg, match) {
 });
 
 bot.onText(/\/set_profile/, function (msg, match) {
-    if(state === "initial"){
-    state = "profile_updating";
-    profile.currentItem = 0;
-    var property = Object.keys(profile.data)[profile.currentItem];
-    bot.sendMessage( msg.chat.id, "Your "+property+":");
+    if (state === "initial") {
+        state = "profile_updating";
+        profile.currentItem = 0;
+        var property = Object.keys(profile.data)[profile.currentItem];
+        bot.sendMessage(msg.chat.id, "Your " + property + ":");
     } else {
-        bot.sendMessage( msg.chat.id, "Profile has already filled!\n\nUse /update_profile to change profile.");
+        bot.sendMessage(msg.chat.id, "Profile has already filled!\n\nUse /update_profile to change profile.");
     }
 });
 
-bot.on("text",function (msg) {
-    if(state === "profile_updating"){
+bot.on("text", function (msg) {
+    if (state === "profile_updating") {
         var property = Object.keys(profile.data)[profile.currentItem];
         profile.data[property] = msg.text;
         profile.currentItem++;
         property = Object.keys(profile.data)[profile.currentItem];
-        if(property !== undefined)
-            bot.sendMessage( msg.chat.id, "Your "+property+":");
+        if (property !== undefined)
+            bot.sendMessage(msg.chat.id, "Your " + property + ":");
         else
             state = "profile_updated";
     }
 });
 
 bot.onText(/\/my_profile/, function (msg, match) {
-    //profile.data.forEach();
-    bot.sendMessage( msg.chat.id, "Your profile:\n" + JSON.stringify(profile.data));
+    bot.sendMessage(msg.chat.id, "Your profile:\n\n" + parseProfile(profile.data));
 });
 
 bot.onText(/\/update_profile/, function (msg, match) {
-    bot.sendMessage( msg.chat.id, "This command has not specified yet.");
+    bot.sendMessage(msg.chat.id, "This command has not specified yet.");
+});
+
+bot.onText(/\/contacts/, function (msg, match) {
+    bot.sendMessage(msg.chat.id, "You have " + profile.contacts.length + " contacts:\n\n");
+    profile.contacts.forEach(function (p1) {
+        bot.sendMessage(msg.chat.id, parseProfile(p1));
+    });
 });
