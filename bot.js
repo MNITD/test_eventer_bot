@@ -5,15 +5,20 @@ var TelegramBot = require('node-telegram-bot-api');
 var token = require('./token');
 
 var bot = new TelegramBot(token, {polling: true});
+
+var Firebase = require('./connect');
+
+var User = require('./user');
+
 bot.getMe().then(function (me) {
     console.log('Hi my name is %s!', me.username);
 });
 
-var state = "initial";
-var profile = {
-    data: {name: "", surname: "", role: "", email: "", phone: ""},
-    contacts: [{name: "John", surname: "McMillow", role: "PM", email: "mcmillow@gmail.com", phone: "+20434384998"}],
-    currentItem: 0
+var users = {
+    001: {data: {name: "", surname: "", position: "", email: "", phone: ""}},
+    state: 'initial',
+    currentItem: 0,
+    contacts: [{name: "John", surname: "McMillow", role: "PM", email: "mcmillow@gmail.com", phone: "+20434384998"}]
 };
 
 function parseProfile(profile) {
@@ -27,92 +32,119 @@ function parseProfile(profile) {
     return message;
 }
 
+function writeToDB(msg) {
+    var property = Object.keys(users[msg.from.id].data)[users[msg.from.id].currentItem];
+    users[msg.from.id].data[property] = msg.text;
+}
+
 //matches /start
 bot.onText(/\/start/, function (msg, match) {
-    var fromId = msg.chat.id; // get the id, of who is sending the message
     var message = "Welcome to eventer_bot.\n";
     message += "This bot help you to exchange your contact information with other users.";
-    bot.sendMessage(fromId, message);
+    bot.sendMessage(msg.chat.id, message);
+    if (!users[msg.from.id]) users[msg.from.id] = new User();
 });
+
 
 bot.onText(/\/echo (.+)/, function (msg, match) {
     bot.sendMessage(msg.chat.id, match[1]);
 });
 
-// bot.onText(/\/set_profile/, function (msg, match) {
-//     if (state === "initial") {
-//         state = "profile_filling";
-//         profile.currentItem = 0;
-//         var property = Object.keys(profile.data)[profile.currentItem];
-//         bot.sendMessage(msg.chat.id, "Your " + property + ":");
-//     } else {
-//         bot.sendMessage(msg.chat.id, "Profile has already filled!\n\nUse /update_profile to change profile.");
-//     }
-// });
-
 bot.on("text", function (msg) {
-    if (state === "profile_filling") {
-        var property;
-        property = Object.keys(profile.data)[profile.currentItem];
-        profile.data[property] = msg.text;
-        profile.currentItem++;
-        property = Object.keys(profile.data)[profile.currentItem];
+    var property;
+    if (!users[msg.from.id]) users[msg.from.id] = new User();
+    if (users[msg.from.id].state === "profile_filling") {
+        writeToDB(msg);
+
+        users[msg.from.id].currentItem++;
+        property = Object.keys(users[msg.from.id].data)[users[msg.from.id].currentItem];
         if (property !== undefined)
             bot.sendMessage(msg.chat.id, "Your " + property + ":");
-        else
-            state = "profile_filled";
-    } else if(state === "profile_updating"){
-        var property;
-        property = Object.keys(profile.data)[profile.currentItem];
+        else {
+            users[msg.from.id].state = "profile_filled";
+            Firebase.ref().user(msg.from.id).then(function (ref) {
+                ref.child(msg.from.id).set({data: users[msg.from.id].data}).then(function () {
+                    //ref.set();
+                })
+            });
+        }
+
+    } else if (users[msg.from.id].state === "profile_updating") {
         if (msg.text !== "Y")
-            profile.data[property] = msg.text;
-        profile.currentItem++;
-        property = Object.keys(profile.data)[profile.currentItem];
+            writeToDB(msg);
+
+        users[msg.from.id].currentItem++;
+        property = Object.keys(users[msg.from.id].data)[users[msg.from.id].currentItem];
         if (property !== undefined)
-            bot.sendMessage(msg.chat.id, "Your " + property + ": ("+ profile.data[property]+")");
-        else
-            state = "profile_updated";
+            bot.sendMessage(msg.chat.id, "Your " + property + ": (" + users[msg.from.id].data[property] + ")");
+        else {
+            users[msg.from.id].state = "profile_updated";
+            Firebase.ref().user(msg.from.id).then(function (ref) {
+                ref.set({data: users[msg.from.id].data}).then(function () {
+                    //ref.set();
+                })
+            });
+        }
     }
 });
 
 bot.onText(/\/profile/, function (msg, match) {
-    if(state === "initial"){
-        state = "profile_filling";
-        bot.sendMessage(msg.chat.id, "Your profile is empty. Answer the question to fill profile.")
-            .then(function () {
-                var property;
+    if (!users[msg.from.id]) users[msg.from.id] = new User();
+    Firebase.ref().user(msg.from.id)
+        .then(function (ref) {
+            if (ref.key === 'users') { // state === initial
+                users[msg.from.id].state = "profile_filling";
+                users[msg.from.id].currentItem = 0;
 
-                profile.currentItem = 0;
-                property = Object.keys(profile.data)[profile.currentItem];
-                bot.sendMessage(msg.chat.id, "Your " + property + ":");
-            });
-    } else
-        bot.sendMessage(msg.chat.id, "Your profile:\n\n" + parseProfile(profile.data));
+                bot.sendMessage(msg.from.id, "Your profile is empty. Answer questions to fill profile.")
+                    .then(function () {
+                        var property = Object.keys(users[msg.from.id].data)[users[msg.from.id].currentItem];
+                        bot.sendMessage(msg.chat.id, "Your " + property + ":");
+                    });
+            } else {
+                Firebase.snap(ref).then(function (snap) {
+                    users[msg.from.id].data = snap.val().data;
+                    console.log(snap.val());
+                    bot.sendMessage(msg.from.id, "Your profile:\n\n" + parseProfile(users[msg.from.id].data));
+                });
+            }
+        })
 });
 
 bot.onText(/\/update_profile/, function (msg, match) {
-    if(state !== "initial"){
-        state = "profile_updating";
-        bot.sendMessage(msg.chat.id, "Answer the question to update profile. To save previous value write \'Y\'.")
-            .then(function () {
-                var property;
-                profile.currentItem = 0;
-                property = Object.keys(profile.data)[profile.currentItem];
-                bot.sendMessage(msg.chat.id, "Your " + property + ": ("+ profile.data[property]+")");
-            });
-    } else
-        bot.sendMessage(msg.chat.id, "/profile");
+
+    Firebase.ref().user(msg.from.id)
+        .then(function (ref) {
+            if (ref.key !== 'users') { //state !== "initial")
+                if (!users[msg.from.id]) users[msg.from.id] = new User();
+                Firebase.snap(ref).then(function (snap) {
+                    users[msg.from.id].data = snap.val().data;
+                    console.log(snap.val());
+                    users[msg.from.id].state = "profile_updating";
+                    users[msg.from.id].currentItem = 0;
+
+                    bot.sendMessage(msg.chat.id, "Answer the question to update profile. To save previous value write \'Y\'.")
+                        .then(function () {
+                            var property = Object.keys(users[msg.from.id].data)[users[msg.from.id].currentItem];
+                            bot.sendMessage(msg.chat.id, "Your " + property + ": (" + users[msg.from.id].data[property] + ")");
+                        });
+                });
+
+            } else
+                bot.sendMessage(msg.from.id, "/profile");
+        })
 });
 
 bot.onText(/\/contacts/, function (msg, match) {
-    bot.sendMessage(msg.chat.id, "You have " + profile.contacts.length + " contacts:\n\n")
+    if (!users[msg.from.id]) users[msg.from.id] = new User();
+    bot.sendMessage(msg.chat.id, "You have " + users[msg.from.id].contacts.length + " contacts:\n\n")
         .then(function () {
-            profile.contacts.forEach(function (p1) {
-                bot.sendMessage(msg.chat.id, parseProfile(p1));
+            users[msg.from.id].contacts.forEach(function (contact) {
+                bot.sendMessage(msg.chat.id, parseProfile(contact));
             });
         });
 });
 
-bot.onText(/\/share_profile/,function (msg, match) {
+bot.onText(/\/share_profile/, function (msg, match) {
     bot.sendMessage(msg.chat.id, "This command has not specified yet.");
 });
