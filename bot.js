@@ -10,6 +10,31 @@ var Firebase = require('./connect');
 
 var User = require('./user');
 
+
+function getInlineButtons(data, page) {
+    var options, buttons = [], item_num = 4, len, keys;
+    page = page | 0;
+    len = page * item_num + 4;
+    keys = Object.keys(data);
+    len = len < keys.length ? len : keys.length;
+
+    for (var i = page * item_num; i < len; i++) {
+        buttons.push([{text: keys[i], callback_data: keys[i]}]);
+    }
+    if (page !== 0)
+        buttons.push([{text: '<< prev', callback_data: 'other_' + (page - 1) + '_prev'}]);
+    if (len !== keys.length) {
+        if (page === 0) buttons.push([{text: 'next >>', callback_data: 'other_' + (page + 1) + '_next'}]);
+        else buttons[buttons.length - 1].push([{text: 'next >>', callback_data: 'other_' + (page + 1) + '_next'}]);
+    }
+    options = {
+        reply_markup: JSON.stringify({
+            inline_keyboard: buttons
+        })
+    };
+    return options;
+}
+
 bot.getMe().then(function (me) {
     console.log('Hi my name is %s!', me.username);
 });
@@ -65,26 +90,29 @@ bot.on("text", function (msg) {
             Firebase.ref().user(msg.from.id).then(function (ref) {
                 ref.child(msg.from.id).set({data: users[msg.from.id].data}).then(function () {
                     //ref.set();
+                    bot.sendMessage(msg.chat.id, "Your profile has successfully filled.");
                 })
             });
+
         }
 
     } else if (users[msg.from.id].state === "profile_updating") {
         if (msg.text !== "Y")
             writeToDB(msg);
 
-        users[msg.from.id].currentItem++;
-        property = Object.keys(users[msg.from.id].data)[users[msg.from.id].currentItem];
-        if (property !== undefined)
-            bot.sendMessage(msg.chat.id, "Your " + property + ": (" + users[msg.from.id].data[property] + ")");
-        else {
-            users[msg.from.id].state = "profile_updated";
-            Firebase.ref().user(msg.from.id).then(function (ref) {
-                ref.set({data: users[msg.from.id].data}).then(function () {
-                    //ref.set();
-                })
-            });
-        }
+        // users[msg.from.id].currentItem++;
+        // property = Object.keys(users[msg.from.id].data)[users[msg.from.id].currentItem];
+        // if (property !== undefined)
+        //     bot.sendMessage(msg.chat.id, "Your " + property + ": (" + users[msg.from.id].data[property] + ")");
+        // else {
+        users[msg.from.id].state = "profile_updated";
+        Firebase.ref().user(msg.from.id).then(function (ref) {
+            ref.set({data: users[msg.from.id].data}).then(function () {
+                //ref.set();
+                bot.sendMessage(msg.chat.id, "Your profile has successfully updated.");
+            })
+        });
+        // }
     }
 });
 
@@ -121,13 +149,14 @@ bot.onText(/\/update_profile/, function (msg, match) {
                     users[msg.from.id].data = snap.val().data;
                     console.log(snap.val());
                     users[msg.from.id].state = "profile_updating";
-                    users[msg.from.id].currentItem = 0;
+                    // users[msg.from.id].currentItem = 0;
 
-                    bot.sendMessage(msg.chat.id, "Answer the question to update profile. To save previous value write \'Y\'.")
-                        .then(function () {
-                            var property = Object.keys(users[msg.from.id].data)[users[msg.from.id].currentItem];
-                            bot.sendMessage(msg.chat.id, "Your " + property + ": (" + users[msg.from.id].data[property] + ")");
-                        });
+                    // bot.sendMessage(msg.chat.id, "Answer the question to update profile. To save previous value write \'Y\'.")
+                    //     .then(function () {
+                    //         var property = Object.keys(users[msg.from.id].data)[users[msg.from.id].currentItem];
+                    //         bot.sendMessage(msg.chat.id, "Your " + property + ": (" + users[msg.from.id].data[property] + ")");
+                    //     });
+                    bot.sendMessage(msg.from.id, "Choose item and write new value to update profile. To save previous value write \'Y\'.", getInlineButtons(users[msg.from.id].data));
                 });
 
             } else
@@ -147,4 +176,58 @@ bot.onText(/\/contacts/, function (msg, match) {
 
 bot.onText(/\/share_profile/, function (msg, match) {
     bot.sendMessage(msg.chat.id, "This command has not specified yet.");
+});
+
+bot.on('callback_query', function (msg) {
+    if (users[msg.from.id].state === "profile_updating") {
+        var args, options, answer;
+        args = msg.data.split('_');
+
+        answer = 'You choose: ' + (args[2] === 'prev' ? '<<' : '>>');
+        bot.answerCallbackQuery(msg.id, answer, false);
+
+        if (args[0] === 'other') {
+            options = {chat_id: msg.message.chat.id, message_id: msg.message.message_id};
+            bot.editMessageReplyMarkup(getInlineButtons(users[msg.from.id].data, args[1]).reply_markup, options);
+        }
+        else
+            bot.sendMessage(msg.from.id, "Your " + msg.data + ": (" + users[msg.from.id].data[msg.data] + ")");
+    }
+});
+
+
+/**
+ * Implementation of inline query handlers
+ */
+
+bot.on('inline_query', function (query) {
+    var articles = [];
+    articles.push({
+        type: "article",
+        id: "article_about",
+        title: "About",
+        input_message_content: {
+            message_text: "This bot help you to exchange your contact information with other users.\nStart right now with @test_eventer_bot!"
+        }
+    });
+    console.log(query);
+    Firebase.ref().user(query.from.id).then(function (ref) {
+        if (ref.key !== 'users') {
+            Firebase.snap(ref).then(function (snap) {
+                console.log(snap.val());
+                articles.push({
+                    type: "article",
+                    id: "article_my_profile",
+                    title: "My Profile",
+                    input_message_content: {
+                        message_text: parseProfile(snap.val().data)
+                    }
+                });
+                bot.answerInlineQuery(query.id, articles);
+            });
+        } else{
+            bot.answerInlineQuery(query.id, articles);
+        }
+    });
+
 });
