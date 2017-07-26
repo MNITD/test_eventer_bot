@@ -39,22 +39,13 @@ bot.getMe().then(function (me) {
     console.log('Hi my name is %s!', me.username);
 });
 
-var users = {
-    001: {data: {name: "", surname: "", position: "", email: "", phone: ""}}
-};
-
-
-// function writeToDB(msg) {
-//     var property = Object.keys(users[msg.from.id].data)[users[msg.from.id].currentItem];
-//     users[msg.from.id].data[property] = msg.text;
-// }
+var users = {};
 
 //matches /start
 bot.onText(/\/start/, function (msg, match) {
     var message = "Welcome to eventer_bot.\n";
     message += "This bot help you to exchange your contact information with other users.";
     bot.sendMessage(msg.chat.id, message);
-    if (!users[msg.from.id]) users[msg.from.id] = new User();
 });
 
 
@@ -63,14 +54,13 @@ bot.onText(/\/start/, function (msg, match) {
 // });
 
 bot.on("text", function (msg) {
+    console.log("On text from user "+ msg.from.id);
     var item;
     if (users[msg.from.id] && users[msg.from.id].getState() === "profile_filling") {
         users[msg.from.id].setItem(users[msg.from.id].currentItem().key, msg.text);
 
-        //users[msg.from.id].currentItem++;
-        // property = Object.keys(users[msg.from.id].data)[users[msg.from.id].currentItem];
         item = users[msg.from.id].nextItem();
-        if (item.key !== undefined)
+        if (item.key)
             bot.sendMessage(msg.chat.id, "Your " + item.key + ":");
         else {
             users[msg.from.id].setState("profile_filled");
@@ -86,11 +76,6 @@ bot.on("text", function (msg) {
     } else if (users[msg.from.id] && users[msg.from.id].getState() === "profile_updating") {
         if (msg.text !== "Y") users[msg.from.id].setItem(users[msg.from.id].currentItem().key, msg.text);
 
-        // users[msg.from.id].currentItem++;
-        // property = Object.keys(users[msg.from.id].data)[users[msg.from.id].currentItem];
-        // if (property !== undefined)
-        //     bot.sendMessage(msg.chat.id, "Your " + property + ": (" + users[msg.from.id].data[property] + ")");
-        // else {
         users[msg.from.id].setState("profile_updated");
         Firebase.ref().user(msg.from.id).then(function (ref) {
             ref.set({data: users[msg.from.id].getData()}).then(function () {
@@ -98,51 +83,42 @@ bot.on("text", function (msg) {
                 bot.sendMessage(msg.chat.id, "Your profile has successfully updated.");
             })
         });
-        // }
     }
 });
 
 bot.onText(/\/profile/, function (msg, match) {
-    if (!users[msg.from.id]) users[msg.from.id] = new User();
+    var message;
+    console.log("User "+ msg.from.id + " choose /profile");
     Firebase.ref().user(msg.from.id)
         .then(function (ref) {
             if (ref.key === 'users') { // state === initial
+                users[msg.from.id] = new User();
                 users[msg.from.id].setState("profile_filling");
-                // users[msg.from.id].currentItem = 0;
-
-                bot.sendMessage(msg.from.id, "Your profile is empty. Answer questions to fill profile.")
+                message = "Your profile is empty. Answer questions to fill profile.";
+                bot.sendMessage(msg.from.id, message)
                     .then(function () {
-                        // var property = Object.keys(users[msg.from.id].data)[users[msg.from.id].currentItem];
-                        bot.sendMessage(msg.chat.id, "Your " + users[msg.from.id].nextItem().key + ":");
+                        bot.sendMessage(msg.from.id, "Your " + users[msg.from.id].nextItem().key + ":");
                     });
             } else {
                 Firebase.snap(ref).then(function (snap) {
-                    users[msg.from.id].setData(snap.val().data);
-                    console.log(snap.val());
-                    bot.sendMessage(msg.from.id, "Your profile:\n\n" + User.parseProfile(users[msg.from.id].getData()));
+                    message = "Your profile:\n\n" + User.parseProfile(snap.val().data);
+                    bot.sendMessage(msg.from.id, message);
                 });
             }
         })
 });
 
 bot.onText(/\/update_profile/, function (msg, match) {
-
+    var message;
+    console.log("User "+ msg.from.id + " choose /update_profile");
     Firebase.ref().user(msg.from.id)
         .then(function (ref) {
-            if (ref.key !== 'users') { //state !== "initial")
-                if (!users[msg.from.id]) users[msg.from.id] = new User();
+            if (ref.key !== 'users') { // state !== initial
                 Firebase.snap(ref).then(function (snap) {
-                    users[msg.from.id].setData(snap.val().data);
-                    console.log(snap.val());
+                    users[msg.from.id] = new User(snap.val().data);
                     users[msg.from.id].setState("profile_updating");
-                    // users[msg.from.id].currentItem = 0;
-
-                    // bot.sendMessage(msg.chat.id, "Answer the question to update profile. To save previous value write \'Y\'.")
-                    //     .then(function () {
-                    //         var property = Object.keys(users[msg.from.id].data)[users[msg.from.id].currentItem];
-                    //         bot.sendMessage(msg.chat.id, "Your " + property + ": (" + users[msg.from.id].data[property] + ")");
-                    //     });
-                    bot.sendMessage(msg.from.id, "Choose item and write new value to update profile. To save previous value write \'Y\'.", getInlineButtons(users[msg.from.id].getData()));
+                    message = "Answer the question to update profile. To save previous value write \'Y\'.";
+                    bot.sendMessage(msg.from.id, message, getInlineButtons(users[msg.from.id].getData()));
                 });
 
             } else
@@ -168,8 +144,8 @@ bot.onText(/\/share_profile/, function (msg, match) {
 });
 
 bot.on('callback_query', function (msg) {
+    var args, options, answer;
     if (users[msg.from.id].getState() === "profile_updating") {
-        var args, options, answer;
         args = msg.data.split('_');
 
         answer = 'You choose: ' + (args[2] === 'prev' ? '<<' : '>>');
@@ -180,7 +156,7 @@ bot.on('callback_query', function (msg) {
             bot.editMessageReplyMarkup(getInlineButtons(users[msg.from.id].getData(), args[1]).reply_markup, options);
         }
         else
-            bot.sendMessage(msg.from.id, "Your " + msg.data + ": (" + users[msg.from.id].getData()[msg.data] + ")");
+            bot.sendMessage(msg.from.id, "Your " + msg.data + ": (" + users[msg.from.id].currentItem(msg.data).val + ")");
     }
 });
 

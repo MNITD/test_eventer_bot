@@ -5,25 +5,29 @@
 var User = function (data) {
 
     var contacts = [],
-        currentItem = -1,
+        currentItem = {index: -1, key: null, val: null},
         state = 'initial';
 
-    data = data | {name: "", surname: "", position: "", email: "", phone: ""};
+    data = data || {name: "", surname: "", position: "", email: "", phone: ""};
 
-    this.currentItem = function () {
-        var property;
-        property = Object.keys(data)[currentItem];
-        return {key: property, val: data[property]}
+    this.currentItem = function (key) {
+        if (key) {
+            currentItem.index = -1;
+            currentItem.key = key;
+            currentItem.val = data[key];
+        }
+
+        return currentItem;
     };
 
     this.nextItem = function () {
         var property;
-        currentItem++;
-        if (currentItem === Object.keys(data).length) {
-            currentItem = -1;
-            return {key: undefined, val: undefined};
+        currentItem.index++;
+        if (currentItem.index === Object.keys(data).length) {
+            currentItem.index = -1;
+            return {key: null, val: null};
         }
-        property = Object.keys(data)[currentItem];
+        property = Object.keys(data)[currentItem.index];
         return {key: property, val: data[property]}
     };
 
