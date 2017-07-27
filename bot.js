@@ -40,15 +40,15 @@ function getReplyButtons(data) {
     keys = Object.keys(data);
 
     keys.forEach(function (key, index) {
-        if(!passFlag){
+        if (!passFlag) {
             row = [];
             row.push({text: data[key], callback_data: key});
-            if(data[key].length < 9 && index < keys.length - 1 &&  data[keys[index+1]].length < 9){
-                row.push({text: data[keys[index+1]], callback_data: keys[index+1]});
+            if (data[key].length < 9 && index < keys.length - 1 && data[keys[index + 1]].length < 9) {
+                row.push({text: data[keys[index + 1]], callback_data: keys[index + 1]});
                 passFlag = true
             }
             buttons.push(row);
-        } else{
+        } else {
             passFlag = false;
         }
 
@@ -97,84 +97,89 @@ bot.on("text", function (msg) {
         users[msg.from.id].setItem(users[msg.from.id].currentItem().key, msg.text);
 
         item = users[msg.from.id].nextItem();
-        if (item.key)
+        if (item.index !== -1)
             bot.sendMessage(msg.chat.id, "Your " + item.key + ":");
         else {
             users[msg.from.id].setState("profile_filled");
-            Firebase.ref().user(msg.from.id).then(function (ref) {
-                ref.child(msg.from.id).set({data: users[msg.from.id].getData()}).then(function () {
-                    //ref.set();
-                    bot.sendMessage(msg.chat.id, "Your profile has successfully filled.");
-                })
+            Firebase.ref().user(msg.from.id).set({data: users[msg.from.id].getData()}).then(function (ref) {
+                //ref.set();
+                bot.sendMessage(msg.chat.id, "Your profile has successfully filled.");
             });
-
         }
 
     } else if (users[msg.from.id] && users[msg.from.id].getState() === "profile_updating") {
         if (msg.text !== "Y") users[msg.from.id].setItem(users[msg.from.id].currentItem().key, msg.text);
 
         users[msg.from.id].setState("profile_updated");
-        Firebase.ref().user(msg.from.id).then(function (ref) {
-            ref.set({data: users[msg.from.id].getData()}).then(function () {
-                //ref.set();
-                bot.sendMessage(msg.chat.id, "Your profile has successfully updated.");
-            })
+        Firebase.ref().user(msg.from.id).set({data: users[msg.from.id].getData()}).then(function (ref) {
+            //ref.set();
+            bot.sendMessage(msg.chat.id, "Your profile has successfully updated.");
         });
     } else if (users[msg.from.id] && users[msg.from.id].getState() === "profile_sharing") {
 
-       if(msg.text.toLowerCase() === "initiate"){ //initiate exchange
-           console.log(msg.text.toLowerCase());
-           bot.sendMessage(msg.from.id, "Waiting for other user...", removeReplyButtons());
-           Firebase.exchange(msg.from.id);
-       } else if(msg.text.toLowerCase() === "join"){//join exchange
+        if (msg.text.toLowerCase() === "initiate") { //initiate exchange
+            console.log(msg.text.toLowerCase());
+            bot.sendMessage(msg.from.id, "Waiting for other user...", removeReplyButtons());
+            Firebase.exchange(msg.from.id);
+        } else if (msg.text.toLowerCase() === "join") {//join exchange
             Firebase.ref().connections().then(function (ref) {
                 Firebase.snap(ref).then(function (snap) {
                     var usersToConnect = [], keys = Object.keys(snap.val());
                 });
             });
-       }
-       console.log(msg);
+        }
+        console.log(msg);
     }
 });
 
 bot.onText(/\/profile/, function (msg, match) {
     var message;
     console.log("User " + msg.from.id + " choose /profile");
-    Firebase.ref().user(msg.from.id)
-        .then(function (ref) {
-            if (ref.key === 'users') { // state === initial
-                users[msg.from.id] = new User();
-                users[msg.from.id].setState("profile_filling");
-                message = "Your profile is empty. Answer questions to fill profile.";
-                bot.sendMessage(msg.from.id, message)
-                    .then(function () {
-                        bot.sendMessage(msg.from.id, "Your " + users[msg.from.id].nextItem().key + ":");
-                    });
-            } else {
-                Firebase.snap(ref).then(function (snap) {
-                    message = "Your profile:\n\n" + User.parseProfile(snap.val().data);
-                    bot.sendMessage(msg.from.id, message);
+    Firebase.ref().user(msg.from.id).val().then(function (val) {
+        if (!val) {  // state === initial
+            users[msg.from.id] = new User();
+            users[msg.from.id].setState("profile_filling");
+            message = "Your profile is empty. Answer questions to fill profile.";
+            bot.sendMessage(msg.from.id, message)
+                .then(function () {
+                    bot.sendMessage(msg.from.id, "Your " + users[msg.from.id].nextItem().key + ":");
                 });
-            }
-        })
+        } else {
+            message = "Your profile:\n\n" + User.parseProfile(val.data);
+            bot.sendMessage(msg.from.id, message);
+        }
+    });
+    // Firebase.ref().user(msg.from.id)
+    //     .then(function (ref) {
+    //         if (ref.key === 'users') { // state === initial
+    //             users[msg.from.id] = new User();
+    //             users[msg.from.id].setState("profile_filling");
+    //             message = "Your profile is empty. Answer questions to fill profile.";
+    //             bot.sendMessage(msg.from.id, message)
+    //                 .then(function () {
+    //                     bot.sendMessage(msg.from.id, "Your " + users[msg.from.id].nextItem().key + ":");
+    //                 });
+    //         } else {
+    //             Firebase.snap(ref).then(function (snap) {
+    //                 message = "Your profile:\n\n" + User.parseProfile(snap.val().data);
+    //                 bot.sendMessage(msg.from.id, message);
+    //             });
+    //         }
+    //     })
 });
 
 bot.onText(/\/update_profile/, function (msg, match) {
     var message;
     console.log("User " + msg.from.id + " choose /update_profile");
-    Firebase.ref().user(msg.from.id)
-        .then(function (ref) {
-            if (ref.key !== 'users') { // state !== initial
-                Firebase.snap(ref).then(function (snap) {
-                    users[msg.from.id] = new User(snap.val().data);
-                    users[msg.from.id].setState("profile_updating");
-                    message = "Answer the question to update profile. To save previous value write \'Y\'.";
-                    bot.sendMessage(msg.from.id, message, getInlineButtons(users[msg.from.id].getData()));
-                });
-
-            } else
-                bot.sendMessage(msg.from.id, "/profile");
-        })
+    Firebase.ref().user(msg.from.id).val().then(function (val) {
+        if (val) { // state !== initial
+            users[msg.from.id] = new User(val.data);
+            users[msg.from.id].setState("profile_updating");
+            message = "Answer the question to update profile. To save previous value write \'Y\'.";
+            bot.sendMessage(msg.from.id, message, getInlineButtons(users[msg.from.id].getData()));
+        } else
+            bot.sendMessage(msg.from.id, "/profile");
+    })
 });
 
 bot.onText(/\/contacts/, function (msg, match) {
@@ -199,7 +204,7 @@ bot.onText(/\/share_profile/, function (msg, match) {
     message = "To exchange profile choose option: \n";
     message += "\t- initiate to start exchange\n";
     message += "\t- join to join existed exchange";
-    data = {initiate: "Initiate", join: "Join" };
+    data = {initiate: "Initiate", join: "Join"};
     bot.sendMessage(msg.from.id, message, getReplyButtons(data));
 });
 
@@ -238,20 +243,18 @@ bot.on('inline_query', function (query) {
         }
     });
     console.log(query);
-    Firebase.ref().user(query.from.id).then(function (ref) {
-        if (ref.key !== 'users') {
-            Firebase.snap(ref).then(function (snap) {
-                console.log(snap.val());
-                articles.push({
-                    type: "article",
-                    id: "article_my_profile",
-                    title: "My Profile",
-                    input_message_content: {
-                        message_text: User.parseProfile(snap.val().data)
-                    }
-                });
-                bot.answerInlineQuery(query.id, articles);
+    Firebase.ref().user(query.from.id).val().then(function (val) {
+        if (val) { // state !== initial
+            console.log(val);
+            articles.push({
+                type: "article",
+                id: "article_my_profile",
+                title: "My Profile",
+                input_message_content: {
+                    message_text: User.parseProfile(val.data)
+                }
             });
+            bot.answerInlineQuery(query.id, articles);
         } else {
             bot.answerInlineQuery(query.id, articles);
         }

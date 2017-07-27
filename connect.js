@@ -28,26 +28,40 @@ module.exports = (function () {
         var ref = firebase.database().ref();
 
         return {
+
             user: function (uid) {
-                return new Promise(function (resolve, reject) {
-                    ref.child('users').orderByKey().equalTo(uid.toString()).on('value', function Success(snapshot) {
-                        if (snapshot.val()) {
-                            resolve(ref.child('users').child(uid));
-                        }
-                        else {
-                            resolve(ref.child('users'));
-                        }
-                    }, function Error(errObj) {
-                        console.error(errObj.error);
-                        reject(errObj);
+                var _user;
+
+                function val() {
+                    return new Promise(function (resolve, reject) {
+                        ref.child('users').orderByKey().equalTo(uid.toString()).on('value', function Success(snapshot) {
+                            _user = snapshot;
+                            resolve(snapshot.val()[uid]);
+                        }, function Error(errObj) {
+                            console.error(errObj.error);
+                            reject(errObj);
+                        });
+                    })
+                }
+
+                function set(object) {
+                    return new Promise(function (resolve, reject) {
+                        // if(_user.val())
+                        ref.child('users').child(uid).set(object).then(resolve, reject);
+                        //resolve(user(uid))
                     });
-                });
+                }
+
+
+                return {val: val, set: set}
             },
+
             contacts: function (uid) {
                 return new Promise(function (resolve, reject) {
                     resolve(ref.child('contacts').child(uid));
                 })
             },
+
             connections: function (uid) {
                 return new Promise(function (resolve, reject) {
                     resolve(ref.child('connections'));
@@ -74,17 +88,17 @@ module.exports = (function () {
     function exchange(uid) {
         var key;
         ref().connections().then(function (ref) {
-                key = getRandom(100, 999);
+            key = getRandom(100, 999);
 
-                ref.orderByKey().equalTo(key.toString()).once('value', function Success(snapshot) {
-                    if (snapshot.val())
-                        exchange(uid);
-                    else
-                        ref.child(key).set({user_id: uid});
+            ref.orderByKey().equalTo(key.toString()).once('value', function Success(snapshot) {
+                if (snapshot.val())
+                    exchange(uid);
+                else
+                    ref.child(key).set({user_id: uid});
 
-                }, function Error(errObj) {
-                    console.error(errObj.error);
-                });
+            }, function Error(errObj) {
+                console.error(errObj.error);
+            });
 
         });
 

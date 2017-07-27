@@ -25,10 +25,12 @@ var User = function (data) {
         currentItem.index++;
         if (currentItem.index === Object.keys(data).length) {
             currentItem.index = -1;
-            return {key: null, val: null};
+            return currentItem;
         }
         property = Object.keys(data)[currentItem.index];
-        return {key: property, val: data[property]}
+        currentItem.key = property;
+        currentItem.val = data[property];
+        return currentItem;
     };
 
     this.setItem = function (key, val) {
