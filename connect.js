@@ -31,10 +31,10 @@ module.exports = (function () {
             user: function (uid) {
                 return new Promise(function (resolve, reject) {
                     ref.child('users').orderByKey().equalTo(uid.toString()).on('value', function Success(snapshot) {
-                        if (snapshot.val()){
+                        if (snapshot.val()) {
                             resolve(ref.child('users').child(uid));
                         }
-                        else{
+                        else {
                             resolve(ref.child('users'));
                         }
                     }, function Error(errObj) {
@@ -47,12 +47,17 @@ module.exports = (function () {
                 return new Promise(function (resolve, reject) {
                     resolve(ref.child('contacts').child(uid));
                 })
+            },
+            connections: function (uid) {
+                return new Promise(function (resolve, reject) {
+                    resolve(ref.child('connections'));
+                })
             }
         }
     }
 
     function snap(ref) {
-        return new Promise(function(resolve, reject){
+        return new Promise(function (resolve, reject) {
             ref.on('value', function Success(snapshot) {
                 resolve(snapshot);
             }, function Error(errObj) {
@@ -62,5 +67,29 @@ module.exports = (function () {
         });
     }
 
-    return {ref: ref, snap: snap};
+    function getRandom(min, max) {
+        return Math.floor(Math.random() * (max - min)) + min;
+    }
+
+    function exchange(uid) {
+        var key;
+        ref().connections().then(function (ref) {
+                key = getRandom(100, 999);
+
+                ref.orderByKey().equalTo(key.toString()).once('value', function Success(snapshot) {
+                    if (snapshot.val())
+                        exchange(uid);
+                    else
+                        ref.child(key).set({user_id: uid});
+
+                }, function Error(errObj) {
+                    console.error(errObj.error);
+                });
+
+        });
+
+    }
+
+    return {ref: ref, snap: snap, exchange: exchange};
+
 }());

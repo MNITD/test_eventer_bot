@@ -35,6 +35,43 @@ function getInlineButtons(data, page) {
     return options;
 }
 
+function getReplyButtons(data) {
+    var options, buttons = [], keys, row, passFlag = false;
+    keys = Object.keys(data);
+
+    keys.forEach(function (key, index) {
+        if(!passFlag){
+            row = [];
+            row.push({text: data[key], callback_data: key});
+            if(data[key].length < 9 && index < keys.length - 1 &&  data[keys[index+1]].length < 9){
+                row.push({text: data[keys[index+1]], callback_data: keys[index+1]});
+                passFlag = true
+            }
+            buttons.push(row);
+        } else{
+            passFlag = false;
+        }
+
+    });
+    options = {
+        reply_markup: JSON.stringify({
+            keyboard: buttons,
+            one_time_keyboard: true
+        })
+    };
+    return options;
+}
+
+function removeReplyButtons() {
+    var options;
+    options = {
+        reply_markup: JSON.stringify({
+            remove_keyboard: true
+        })
+    };
+    return options;
+}
+
 bot.getMe().then(function (me) {
     console.log('Hi my name is %s!', me.username);
 });
@@ -54,7 +91,7 @@ bot.onText(/\/start/, function (msg, match) {
 // });
 
 bot.on("text", function (msg) {
-    console.log("On text from user "+ msg.from.id);
+    console.log("On text from user " + msg.from.id);
     var item;
     if (users[msg.from.id] && users[msg.from.id].getState() === "profile_filling") {
         users[msg.from.id].setItem(users[msg.from.id].currentItem().key, msg.text);
@@ -83,12 +120,26 @@ bot.on("text", function (msg) {
                 bot.sendMessage(msg.chat.id, "Your profile has successfully updated.");
             })
         });
+    } else if (users[msg.from.id] && users[msg.from.id].getState() === "profile_sharing") {
+
+       if(msg.text.toLowerCase() === "initiate"){ //initiate exchange
+           console.log(msg.text.toLowerCase());
+           bot.sendMessage(msg.from.id, "Waiting for other user...", removeReplyButtons());
+           Firebase.exchange(msg.from.id);
+       } else if(msg.text.toLowerCase() === "join"){//join exchange
+            Firebase.ref().connections().then(function (ref) {
+                Firebase.snap(ref).then(function (snap) {
+                    var usersToConnect = [], keys = Object.keys(snap.val());
+                });
+            });
+       }
+       console.log(msg);
     }
 });
 
 bot.onText(/\/profile/, function (msg, match) {
     var message;
-    console.log("User "+ msg.from.id + " choose /profile");
+    console.log("User " + msg.from.id + " choose /profile");
     Firebase.ref().user(msg.from.id)
         .then(function (ref) {
             if (ref.key === 'users') { // state === initial
@@ -110,7 +161,7 @@ bot.onText(/\/profile/, function (msg, match) {
 
 bot.onText(/\/update_profile/, function (msg, match) {
     var message;
-    console.log("User "+ msg.from.id + " choose /update_profile");
+    console.log("User " + msg.from.id + " choose /update_profile");
     Firebase.ref().user(msg.from.id)
         .then(function (ref) {
             if (ref.key !== 'users') { // state !== initial
@@ -140,11 +191,22 @@ bot.onText(/\/contacts/, function (msg, match) {
 });
 
 bot.onText(/\/share_profile/, function (msg, match) {
-    bot.sendMessage(msg.chat.id, "This command has not specified yet.");
+    // bot.sendMessage(msg.chat.id, "This command has not specified yet.");
+    var message;
+    console.log("User " + msg.from.id + " choose /share_profile");
+    if (!users[msg.from.id]) users[msg.from.id] = new User();
+    users[msg.from.id].setState("profile_sharing");
+    message = "To exchange profile choose option: \n";
+    message += "\t- initiate to start exchange\n";
+    message += "\t- join to join existed exchange";
+    data = {initiate: "Initiate", join: "Join" };
+    bot.sendMessage(msg.from.id, message, getReplyButtons(data));
 });
 
+// handler for inline keyboards
 bot.on('callback_query', function (msg) {
     var args, options, answer;
+    console.log("On callback_query from user " + msg.from.id);
     if (users[msg.from.id].getState() === "profile_updating") {
         args = msg.data.split('_');
 
