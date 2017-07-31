@@ -15,15 +15,24 @@ function getInlineButtons(data, page) {
     var options, buttons = [], item_num = 4, len, keys;
     page = page | 0;
     len = page * item_num + 4;
-    keys = Object.keys(data);
-    len = len < keys.length ? len : keys.length;
 
-    for (var i = page * item_num; i < len; i++) {
-        buttons.push([{text: keys[i], callback_data: keys[i]}]);
+    if (!Array.isArray(data)) {
+
+        keys = Object.keys(data);
+        len = len < keys.length ? len : keys.length;
+
+        for (var i = page * item_num; i < len; i++) {
+            buttons.push([{text: keys[i], callback_data: keys[i]}]);
+        }
+
+    } else {
+        data.forEach(function (user) {
+            buttons.push([user]);
+        });
     }
     if (page !== 0)
         buttons.push([{text: '<< prev', callback_data: 'other_' + (page - 1) + '_prev'}]);
-    if (len !== keys.length) {
+    if ((data.length > 4 && len !== data.length) || (keys && keys.length > 4 && len !== keys.length)) {
         if (page === 0) buttons.push([{text: 'next >>', callback_data: 'other_' + (page + 1) + '_next'}]);
         else buttons[buttons.length - 1].push([{text: 'next >>', callback_data: 'other_' + (page + 1) + '_next'}]);
     }
@@ -35,24 +44,28 @@ function getInlineButtons(data, page) {
     return options;
 }
 
-function getReplyButtons(data) {
+function getReplyButtons(dataArr) {
     var options, buttons = [], keys, row, passFlag = false;
-    keys = Object.keys(data);
 
-    keys.forEach(function (key, index) {
-        if (!passFlag) {
-            row = [];
-            row.push({text: data[key], callback_data: key});
-            if (data[key].length < 9 && index < keys.length - 1 && data[keys[index + 1]].length < 9) {
-                row.push({text: data[keys[index + 1]], callback_data: keys[index + 1]});
-                passFlag = true
+    dataArr.forEach(function (data) {
+        keys = Object.keys(data);
+
+        keys.forEach(function (key, index) {
+            if (!passFlag) {
+                row = [];
+                row.push({text: data[key], callback_data: key});
+                if (data[key].length < 9 && index < keys.length - 1 && data[keys[index + 1]].length < 9) {
+                    row.push({text: data[keys[index + 1]], callback_data: keys[index + 1]});
+                    passFlag = true
+                }
+                buttons.push(row);
+            } else {
+                passFlag = false;
             }
-            buttons.push(row);
-        } else {
-            passFlag = false;
-        }
 
+        });
     });
+
     options = {
         reply_markup: JSON.stringify({
             keyboard: buttons,
@@ -76,7 +89,7 @@ bot.getMe().then(function (me) {
     console.log('Hi my name is %s!', me.username);
 });
 
-var users = {};
+var users = {}, connectionUsers;
 
 //matches /start
 bot.onText(/\/start/, function (msg, match) {
@@ -118,17 +131,30 @@ bot.on("text", function (msg) {
     } else if (users[msg.from.id] && users[msg.from.id].getState() === "profile_sharing") {
 
         if (msg.text.toLowerCase() === "initiate") { //initiate exchange
-            console.log(msg.text.toLowerCase());
             bot.sendMessage(msg.from.id, "Waiting for other user...", removeReplyButtons());
-            Firebase.exchange(msg.from.id);
-        } else if (msg.text.toLowerCase() === "join") {//join exchange
-            Firebase.ref().connections().then(function (ref) {
-                Firebase.snap(ref).then(function (snap) {
-                    var usersToConnect = [], keys = Object.keys(snap.val());
+            Firebase.exchange(msg.from.id, function onExchange(val) { //TODO edit inlineButtons, when new users
+                users[msg.from.id].setState("started_sharing");
+                var mapedUsers = val.map(function (user) {
+                    return {
+                        text: user.data.name + " " + user.data.surname,
+                        callback_data: user.key + "_" + user.id
+                    };
                 });
+                console.log("mappedUsers:");
+                console.log(mapedUsers);
+                bot.sendMessage(msg.from.id, "This users want to exchange profile with you:", getInlineButtons(mapedUsers));
+
+            });
+        } else if (msg.text.toLowerCase() === "join") {//join exchange
+            Firebase.ref().connections().users().then(function (val) {
+                users[msg.from.id].setState("joined_sharing");
+                connectionUsers = val.map(function (user) {
+                    return {text: user.data.name + " " + user.data.surname, callback_data: user.key};
+                });
+                bot.sendMessage(msg.from.id, "Choose user to exchange:", getInlineButtons(connectionUsers));
             });
         }
-        console.log(msg);
+        //console.log(msg);
     }
 });
 
@@ -149,23 +175,6 @@ bot.onText(/\/profile/, function (msg, match) {
             bot.sendMessage(msg.from.id, message);
         }
     });
-    // Firebase.ref().user(msg.from.id)
-    //     .then(function (ref) {
-    //         if (ref.key === 'users') { // state === initial
-    //             users[msg.from.id] = new User();
-    //             users[msg.from.id].setState("profile_filling");
-    //             message = "Your profile is empty. Answer questions to fill profile.";
-    //             bot.sendMessage(msg.from.id, message)
-    //                 .then(function () {
-    //                     bot.sendMessage(msg.from.id, "Your " + users[msg.from.id].nextItem().key + ":");
-    //                 });
-    //         } else {
-    //             Firebase.snap(ref).then(function (snap) {
-    //                 message = "Your profile:\n\n" + User.parseProfile(snap.val().data);
-    //                 bot.sendMessage(msg.from.id, message);
-    //             });
-    //         }
-    //     })
 });
 
 bot.onText(/\/update_profile/, function (msg, match) {
@@ -183,10 +192,13 @@ bot.onText(/\/update_profile/, function (msg, match) {
 });
 
 bot.onText(/\/contacts/, function (msg, match) {
+    var message;
     if (!users[msg.from.id]) {
-        bot.sendMessage(msg.from.id, "You have no contacts yet.");
+        message = "You have no contacts yet.";
+        bot.sendMessage(msg.from.id, message);
     } else {
-        bot.sendMessage(msg.chat.id, "You have " + users[msg.from.id].getContacts.length + " contacts:\n\n")
+        message = "You have " + users[msg.from.id].getContacts.length + " contacts:\n\n";
+        bot.sendMessage(msg.chat.id, message)
             .then(function () {
                 users[msg.from.id].getContacts().forEach(function (contact) {
                     bot.sendMessage(msg.chat.id, User.parseProfile(contact));
@@ -204,7 +216,7 @@ bot.onText(/\/share_profile/, function (msg, match) {
     message = "To exchange profile choose option: \n";
     message += "\t- initiate to start exchange\n";
     message += "\t- join to join existed exchange";
-    data = {initiate: "Initiate", join: "Join"};
+    data = [{initiate: "Initiate", join: "Join"}];
     bot.sendMessage(msg.from.id, message, getReplyButtons(data));
 });
 
@@ -212,18 +224,69 @@ bot.onText(/\/share_profile/, function (msg, match) {
 bot.on('callback_query', function (msg) {
     var args, options, answer;
     console.log("On callback_query from user " + msg.from.id);
-    if (users[msg.from.id].getState() === "profile_updating") {
-        args = msg.data.split('_');
 
+    args = msg.data.split('_');
+
+    if (args[0] === 'other') {
         answer = 'You choose: ' + (args[2] === 'prev' ? '<<' : '>>');
+    } else {
+        answer = args[0];
+    }
+
+
+    options = {chat_id: msg.message.chat.id, message_id: msg.message.message_id};
+
+
+    if (users[msg.from.id].getState() === "profile_updating") {
+
         bot.answerCallbackQuery(msg.id, answer, false);
+        if (args[0] === 'other') {
+            bot.editMessageReplyMarkup(getInlineButtons(users[msg.from.id].getData(), args[1]).reply_markup, options);
+        } else {
+            bot.sendMessage(msg.from.id, "Your " + msg.data + ": (" + users[msg.from.id].currentItem(msg.data).val + ")");
+        }
+    } else if (users[msg.from.id].getState() === "joined_sharing") {
 
         if (args[0] === 'other') {
-            options = {chat_id: msg.message.chat.id, message_id: msg.message.message_id};
-            bot.editMessageReplyMarkup(getInlineButtons(users[msg.from.id].getData(), args[1]).reply_markup, options);
+            bot.answerCallbackQuery(msg.id, answer, false);
+            bot.editMessageReplyMarkup(getInlineButtons(connectionUsers, args[1]).reply_markup, options);
+        } else {
+
+            answer = connectionUsers.find(function (user) {
+                return user.callback_data === args[0];
+            }).text;
+            bot.answerCallbackQuery(msg.id, answer, false);
+            var candidate = {};
+            candidate[msg.from.id] = {status: 'f'};
+
+            // console.log(candidate);
+
+            Firebase.ref().connections(msg.data).candidates().set(candidate, function onApprove() {
+                bot.sendMessage(msg.from.id, "Contact successfully exchanged!");
+                users[msg.from.id].setState("complete_sharing");
+            }).then(function () {
+                bot.sendMessage(msg.from.id, "Wating for reply...", removeReplyButtons());
+            });
+
         }
-        else
-            bot.sendMessage(msg.from.id, "Your " + msg.data + ": (" + users[msg.from.id].currentItem(msg.data).val + ")");
+    } else if (users[msg.from.id].getState() === "started_sharing") {
+        if (args[0] === 'other') {
+            bot.answerCallbackQuery(msg.id, answer, false);
+            // bot.editMessageReplyMarkup(getInlineButtons(connectionUsers, args[1]).reply_markup, options);
+        } else {
+            Firebase.ref().user(args[1]).val().then(function (val) {
+                answer = val.data.name + " " + val.data.surname;
+                bot.answerCallbackQuery(msg.id, answer, false);
+                var candidate = {};
+                candidate[args[1]] = {status: 't'};
+                // var connectionKey = connectionUsers.find()
+                Firebase.ref().connections(args[0]).candidates().set(candidate).then(function () {
+                    bot.sendMessage(msg.from.id, "Contact successfully exchanged!");
+                    users[msg.from.id].setState("complete_sharing");
+                });
+            });
+
+        }
     }
 });
 
@@ -245,7 +308,7 @@ bot.on('inline_query', function (query) {
     console.log(query);
     Firebase.ref().user(query.from.id).val().then(function (val) {
         if (val) { // state !== initial
-            console.log(val);
+            console.log(val.data);//
             articles.push({
                 type: "article",
                 id: "article_my_profile",
