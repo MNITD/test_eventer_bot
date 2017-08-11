@@ -171,17 +171,6 @@ module.exports = (function () {
         }
     }
 
-    function snap(ref) {
-        return new Promise(function (resolve, reject) {
-            ref.on('value', function Success(snapshot) {
-                resolve(snapshot);
-            }, function Error(errObj) {
-                console.error(errObj.error);
-                reject(errObj);
-            })
-        });
-    }
-
     function getRandom(min, max) {
         return Math.floor(Math.random() * (max - min)) + min;
     }
